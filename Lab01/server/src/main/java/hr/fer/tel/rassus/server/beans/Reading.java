@@ -1,5 +1,6 @@
 package hr.fer.tel.rassus.server.beans;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import org.springframework.lang.NonNull;
 
 import javax.persistence.Entity;
@@ -86,6 +87,7 @@ public class Reading {
         this.so2 = so2;
     }
 
+    @JsonIgnore
     public Sensor getSensor() {
         return sensor;
     }
