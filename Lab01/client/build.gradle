@@ -1,0 +1,17 @@
+plugins {
+    id 'java'
+    id 'idea'
+}
+
+group 'hr.fer.tel.rassus'
+version '1.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'com.squareup.retrofit2:retrofit:2.9.0'
+    implementation 'com.squareup.retrofit2:converter-jackson:2.9.0'
+}
