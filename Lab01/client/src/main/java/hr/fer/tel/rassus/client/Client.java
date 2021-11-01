@@ -1,7 +1,7 @@
 package hr.fer.tel.rassus.client;
 
-import hr.fer.tel.rassus.client.model.RegistrationForm;
-import hr.fer.tel.rassus.client.retrofit.RegistrationApi;
+import hr.fer.tel.rassus.client.model.Sensor;
+import hr.fer.tel.rassus.client.retrofit.SensorApi;
 import retrofit2.Response;
 import retrofit2.Retrofit;
 import retrofit2.converter.jackson.JacksonConverterFactory;
@@ -48,11 +48,11 @@ public class Client {
     }
 
     private int register() {
-        final RegistrationApi registrationApi = retrofit.create(RegistrationApi.class);
-        final RegistrationForm form = new RegistrationForm(latitude, longitude, ip, port);
+        final SensorApi sensorApi = retrofit.create(SensorApi.class);
+        final Sensor registration = new Sensor(latitude, longitude, ip, port);
 
         try {
-            Response<Void> response = registrationApi.register(form).execute();
+            Response<Void> response = sensorApi.register(registration).execute();
             String location = response.headers().get("Location");
             return Integer.parseInt(location.substring(location.lastIndexOf('/')+1));
         } catch (IOException | NullPointerException e) {
@@ -61,7 +61,18 @@ public class Client {
         }
     }
 
+    private Sensor findClosest() {
+        final SensorApi sensorApi = retrofit.create(SensorApi.class);
+
+        try {
+            return sensorApi.getClosest(id).execute().body();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public static void main(String[] args) {
         Client cli = new Client();
+        System.out.println(cli.findClosest());
     }
 }
