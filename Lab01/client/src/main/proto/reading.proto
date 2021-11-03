@@ -9,7 +9,9 @@ service Reading {
   rpc RequestReading (ReadingRequest) returns (ReadingResponse) {}
 }
 
-message ReadingRequest {}
+message ReadingRequest {
+  int64 id = 1;
+}
 
 message ReadingResponse {
   double temperature = 1;
