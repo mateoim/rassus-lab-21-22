@@ -1,8 +1,13 @@
 package hr.fer.tel.rassus.client;
 
+import hr.fer.tel.rassus.client.grpc.ReadingService;
 import hr.fer.tel.rassus.client.model.Reading;
 import hr.fer.tel.rassus.client.model.Sensor;
 import hr.fer.tel.rassus.client.retrofit.SensorApi;
+import hr.fer.tel.rassus.examples.ReadingGrpc;
+import hr.fer.tel.rassus.examples.ReadingRequest;
+import hr.fer.tel.rassus.examples.ReadingResponse;
+import io.grpc.*;
 import retrofit2.Response;
 import retrofit2.Retrofit;
 import retrofit2.converter.jackson.JacksonConverterFactory;
@@ -14,6 +19,8 @@ import java.nio.file.Paths;
 import java.util.List;
 import java.util.Objects;
 import java.util.Random;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Logger;
 
 public class Client {
 
@@ -35,23 +42,32 @@ public class Client {
 
     private final String ip = "127.0.0.1";
 
-    private final int port = 8080;
+    private int port;
 
     private final long startTime;
 
     private final Retrofit retrofit;
 
-    private Reading latestReading;
+    private Reading latestReading = new Reading(0, 0, 0, 0, 0, 0);
 
     private final List<String> readings;
 
+    private Server grpcServer;
+
+    private ManagedChannel channel = null;
+
+    private ReadingGrpc.ReadingBlockingStub readingBlockingStub = null;
+
+    private static final Logger logger = Logger.getLogger(Client.class.getName());
+
     public Client() {
-        this.startTime = System.currentTimeMillis();
+        this.startTime = System.currentTimeMillis() / 1000;
 
         Random rand = new Random();
         this.latitude = MIN_LAT + (MAX_LAT - MIN_LAT) * rand.nextDouble();
         this.longitude = MIN_LON + (MAX_LON - MIN_LON) * rand.nextDouble();
 
+        startServer();
         this.readings = loadReadings();
 
         this.retrofit = new Retrofit.Builder().baseUrl(server)
@@ -69,6 +85,32 @@ public class Client {
         }
     }
 
+    private void startServer() {
+        try {
+            grpcServer = ServerBuilder.forPort(0)
+                    .addService(new ReadingService(this))
+                    .build().start();
+
+            this.port = grpcServer.getPort();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        //  Clean shutdown of server in case of JVM shutdown
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            System.out.println("Shutting down gRPC server since JVM is shutting down");
+            try {
+                grpcServer.shutdown().awaitTermination(5, TimeUnit.SECONDS);
+                if (channel != null) {
+                    channel.awaitTermination(5, TimeUnit.SECONDS);
+                }
+            } catch (InterruptedException e) {
+                e.printStackTrace(System.err);
+            }
+            System.out.println("Server shut down");
+        }));
+    }
+
     private int register() {
         final SensorApi sensorApi = retrofit.create(SensorApi.class);
         final Sensor registration = new Sensor(latitude, longitude, ip, port);
@@ -83,6 +125,50 @@ public class Client {
         }
     }
 
+    private void start() {
+        Sensor neighbour = null;
+        final Random rand = new Random();
+
+        while (true) {
+            latestReading = generateReading();
+            Reading currentReading = latestReading;
+
+            if (neighbour == null) {
+                neighbour = findClosest();
+            }
+
+            if (neighbour != null && channel == null) {
+                channel = ManagedChannelBuilder.forAddress(neighbour.getIp(), neighbour.getPort()).usePlaintext().build();
+                readingBlockingStub = ReadingGrpc.newBlockingStub(channel);
+            }
+
+            if (readingBlockingStub != null) {
+                currentReading = calibrateReading();
+            }
+
+            System.out.println("Calibrated reading: " + currentReading);
+
+            try {
+                Thread.sleep(rand.nextInt(5000));
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private Reading generateReading() {
+        String line = readings.get((int) (System.currentTimeMillis() / 1000 - this.startTime) % 100 + 1);
+        String[] parts = line.split(",");
+
+        return new Reading(
+                parts[0].equals("") ? 0 : Double.parseDouble(parts[0]),
+                parts[1].equals("") ? 0 : Double.parseDouble(parts[1]),
+                parts[2].equals("") ? 0 : Double.parseDouble(parts[2]),
+                parts[3].equals("") ? 0 : Double.parseDouble(parts[3]),
+                parts[4].equals("") ? 0 : Double.parseDouble(parts[4]),
+                parts.length == 5 || parts[5].equals("") ? 0 : Double.parseDouble(parts[5]));
+    }
+
     private Sensor findClosest() {
         final SensorApi sensorApi = retrofit.create(SensorApi.class);
 
@@ -93,12 +179,44 @@ public class Client {
         }
     }
 
+    private Reading calibrateReading() {
+        final ReadingRequest request = ReadingRequest.newBuilder().setId(this.id).build();
+
+        logger.info("Sending gRPC request.");
+
+        try {
+            ReadingResponse response = readingBlockingStub.requestReading(request);
+            return calculateCalibration(this.getLatestReading(), response);
+        } catch (StatusRuntimeException e) {
+            logger.info("RPC failed: " + e.getMessage());
+        }
+
+        return this.latestReading;
+    }
+
+    private Reading calculateCalibration(Reading reading, ReadingResponse response) {
+        return new Reading(
+                reading.getTemperature() + response.getTemperature() /
+                        Math.min(reading.getTemperature(), response.getTemperature()) <= 0 ? 1 : 2,
+                reading.getPressure() + response.getPressure() /
+                        Math.min(reading.getPressure(), response.getPressure()) <= 0 ? 1 : 2,
+                reading.getHumidity() + response.getHumidity() /
+                        Math.min(reading.getHumidity(), response.getHumidity()) <= 0 ? 1 : 2,
+                reading.getCo() + response.getCo() /
+                        Math.min(reading.getCo(), response.getCo()) <= 0 ? 1 : 2,
+                reading.getNo2() + response.getNo2() /
+                        Math.min(reading.getNo2(), response.getNo2()) <= 0 ? 1 : 2,
+                reading.getSo2() + response.getSo2() /
+                        Math.min(reading.getSo2(), response.getSo2()) <= 0 ? 1 : 2
+        );
+    }
+
     public Reading getLatestReading() {
         return latestReading;
     }
 
     public static void main(String[] args) {
         Client cli = new Client();
-        System.out.println(cli.findClosest());
+        cli.start();
     }
 }
