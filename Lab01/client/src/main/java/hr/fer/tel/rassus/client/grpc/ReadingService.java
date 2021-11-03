@@ -24,13 +24,13 @@ public class ReadingService extends ReadingGrpc.ReadingImplBase {
         logger.info("New request form " + request.getId());
 
         Reading reading = client.getLatestReading();
-        ReadingResponse response =ReadingResponse.newBuilder()
+        ReadingResponse response = ReadingResponse.newBuilder()
                 .setTemperature(reading.getTemperature())
                 .setPressure(reading.getPressure())
                 .setHumidity(reading.getHumidity())
                 .setCo(reading.getCo())
                 .setNo2(reading.getNo2())
-                .setSo2(reading.getNo2())
+                .setSo2(reading.getSo2())
                 .build();
 
         responseObserver.onNext(response);
