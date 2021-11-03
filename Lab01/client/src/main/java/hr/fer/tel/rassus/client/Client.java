@@ -1,5 +1,6 @@
 package hr.fer.tel.rassus.client;
 
+import hr.fer.tel.rassus.client.model.Reading;
 import hr.fer.tel.rassus.client.model.Sensor;
 import hr.fer.tel.rassus.client.retrofit.SensorApi;
 import retrofit2.Response;
@@ -7,6 +8,11 @@ import retrofit2.Retrofit;
 import retrofit2.converter.jackson.JacksonConverterFactory;
 
 import java.io.IOException;
+import java.net.URISyntaxException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.List;
+import java.util.Objects;
 import java.util.Random;
 
 public class Client {
@@ -35,16 +41,32 @@ public class Client {
 
     private final Retrofit retrofit;
 
-    public Client() {
-        Random rand = new Random();
+    private Reading latestReading;
 
+    private final List<String> readings;
+
+    public Client() {
+        this.startTime = System.currentTimeMillis();
+
+        Random rand = new Random();
         this.latitude = MIN_LAT + (MAX_LAT - MIN_LAT) * rand.nextDouble();
         this.longitude = MIN_LON + (MAX_LON - MIN_LON) * rand.nextDouble();
-        this.startTime = System.currentTimeMillis();
+
+        this.readings = loadReadings();
 
         this.retrofit = new Retrofit.Builder().baseUrl(server)
                 .addConverterFactory(JacksonConverterFactory.create()).build();
         this.id = register();
+    }
+
+    private List<String> loadReadings() {
+        ClassLoader classloader = Thread.currentThread().getContextClassLoader();
+        try {
+            return Files.readAllLines(Paths.get(Objects.requireNonNull(
+                    classloader.getResource("readings[2].csv")).toURI()));
+        } catch (IOException | URISyntaxException e) {
+            throw new RuntimeException("Error loading readings.");
+        }
     }
 
     private int register() {
@@ -69,6 +91,10 @@ public class Client {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public Reading getLatestReading() {
+        return latestReading;
     }
 
     public static void main(String[] args) {
