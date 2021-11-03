@@ -3,6 +3,7 @@ package hr.fer.tel.rassus.client;
 import hr.fer.tel.rassus.client.grpc.ReadingService;
 import hr.fer.tel.rassus.client.model.Reading;
 import hr.fer.tel.rassus.client.model.Sensor;
+import hr.fer.tel.rassus.client.retrofit.ReadingApi;
 import hr.fer.tel.rassus.client.retrofit.SensorApi;
 import hr.fer.tel.rassus.examples.ReadingGrpc;
 import hr.fer.tel.rassus.examples.ReadingRequest;
@@ -120,7 +121,7 @@ public class Client {
             String location = response.headers().get("Location");
             return Integer.parseInt(location.substring(location.lastIndexOf('/')+1));
         } catch (IOException | NullPointerException e) {
-            System.out.println("Failed to register sensor.");
+            logger.info("Failed to register sensor.");
             return -1;
         }
     }
@@ -128,6 +129,7 @@ public class Client {
     private void start() {
         Sensor neighbour = null;
         final Random rand = new Random();
+        final ReadingApi readingApi = retrofit.create(ReadingApi.class);
 
         while (true) {
             latestReading = generateReading();
@@ -146,13 +148,15 @@ public class Client {
                 currentReading = calibrateReading();
             }
 
-            System.out.println("Calibrated reading: " + currentReading);
+            try {
+                readingApi.saveReading(this.id, currentReading).execute();
+            } catch (IOException | NullPointerException e) {
+                logger.info("Failed to save the reading.");
+            }
 
             try {
                 Thread.sleep(rand.nextInt(5000));
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
+            } catch (InterruptedException ignored) {}
         }
     }
 
@@ -186,6 +190,7 @@ public class Client {
 
         try {
             ReadingResponse response = readingBlockingStub.requestReading(request);
+            logger.info("Response received.");
             return calculateCalibration(this.getLatestReading(), response);
         } catch (StatusRuntimeException e) {
             logger.info("RPC failed: " + e.getMessage());
@@ -197,17 +202,17 @@ public class Client {
     private Reading calculateCalibration(Reading reading, ReadingResponse response) {
         return new Reading(
                 reading.getTemperature() + response.getTemperature() /
-                        Math.min(reading.getTemperature(), response.getTemperature()) <= 0 ? 1 : 2,
+                        (Math.min(reading.getTemperature(), response.getTemperature()) <= 0 ? 1 : 2),
                 reading.getPressure() + response.getPressure() /
-                        Math.min(reading.getPressure(), response.getPressure()) <= 0 ? 1 : 2,
+                        (Math.min(reading.getPressure(), response.getPressure()) <= 0 ? 1 : 2),
                 reading.getHumidity() + response.getHumidity() /
-                        Math.min(reading.getHumidity(), response.getHumidity()) <= 0 ? 1 : 2,
+                        (Math.min(reading.getHumidity(), response.getHumidity()) <= 0 ? 1 : 2),
                 reading.getCo() + response.getCo() /
-                        Math.min(reading.getCo(), response.getCo()) <= 0 ? 1 : 2,
+                        (Math.min(reading.getCo(), response.getCo()) <= 0 ? 1 : 2),
                 reading.getNo2() + response.getNo2() /
-                        Math.min(reading.getNo2(), response.getNo2()) <= 0 ? 1 : 2,
+                        (Math.min(reading.getNo2(), response.getNo2()) <= 0 ? 1 : 2),
                 reading.getSo2() + response.getSo2() /
-                        Math.min(reading.getSo2(), response.getSo2()) <= 0 ? 1 : 2
+                        (Math.min(reading.getSo2(), response.getSo2()) <= 0 ? 1 : 2)
         );
     }
 
