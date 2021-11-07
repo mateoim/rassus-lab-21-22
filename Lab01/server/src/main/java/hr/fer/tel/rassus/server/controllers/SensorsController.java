@@ -22,7 +22,7 @@ public class SensorsController {
         this.sensorRepository = sensorRepository;
     }
 
-    @PutMapping
+    @PostMapping
     public ResponseEntity<Sensor> registerSensor(@RequestBody Sensor sensor) {
         sensorRepository.save(sensor);
 

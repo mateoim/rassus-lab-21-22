@@ -26,7 +26,7 @@ public class ReadingController {
         this.sensorRepository = sensorRepository;
     }
 
-    @PutMapping("/sensor/{id}")
+    @PostMapping("/sensor/{id}")
     public ResponseEntity<Reading> saveReading(@RequestBody Reading reading, @PathVariable long id) {
         Optional<Sensor> query = sensorRepository.findById(id);
 
