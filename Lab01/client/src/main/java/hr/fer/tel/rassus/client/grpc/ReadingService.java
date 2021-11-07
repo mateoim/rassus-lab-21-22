@@ -1,10 +1,10 @@
 package hr.fer.tel.rassus.client.grpc;
 
 import hr.fer.tel.rassus.client.Client;
+import hr.fer.tel.rassus.client.ReadingGrpc;
+import hr.fer.tel.rassus.client.ReadingRequest;
+import hr.fer.tel.rassus.client.ReadingResponse;
 import hr.fer.tel.rassus.client.model.Reading;
-import hr.fer.tel.rassus.examples.ReadingGrpc;
-import hr.fer.tel.rassus.examples.ReadingRequest;
-import hr.fer.tel.rassus.examples.ReadingResponse;
 import io.grpc.stub.StreamObserver;
 
 import java.util.logging.Logger;
