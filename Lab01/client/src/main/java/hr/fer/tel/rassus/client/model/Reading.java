@@ -46,4 +46,9 @@ public class Reading {
     public double getSo2() {
         return so2;
     }
+
+    @Override
+    public String toString() {
+        return temperature + "," + pressure + "," + humidity + "," + co + "," + no2 + "," + so2;
+    }
 }
