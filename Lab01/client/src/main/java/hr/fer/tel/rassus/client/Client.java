@@ -61,6 +61,10 @@ public class Client {
 
     private static final Logger logger = Logger.getLogger(Client.class.getName());
 
+    private static final int MAX_TIMEOUTS = 5;
+
+    private int timeoutCounter = 0;
+
     public Client() {
         this.startTime = System.currentTimeMillis() / 1000;
 
@@ -102,7 +106,7 @@ public class Client {
             System.out.println("Shutting down gRPC server since JVM is shutting down");
             try {
                 grpcServer.shutdown().awaitTermination(5, TimeUnit.SECONDS);
-                if (channel != null) {
+                if (channel != null && !channel.isTerminated()) {
                     channel.awaitTermination(5, TimeUnit.SECONDS);
                 }
             } catch (InterruptedException e) {
@@ -144,12 +148,13 @@ public class Client {
                 readingBlockingStub = ReadingGrpc.newBlockingStub(channel);
             }
 
-            if (readingBlockingStub != null) {
+            if (channel != null && !channel.isTerminated()) {
                 currentReading = calibrateReading();
             }
 
             try {
                 readingApi.saveReading(this.id, currentReading).execute();
+                logger.info("Reading " + currentReading + " saved.");
             } catch (IOException | NullPointerException e) {
                 logger.info("Failed to save the reading.");
             }
@@ -191,9 +196,16 @@ public class Client {
         try {
             ReadingResponse response = readingBlockingStub.requestReading(request);
             logger.info("Response received.");
+            timeoutCounter = 0;
             return calculateCalibration(this.getLatestReading(), response);
         } catch (StatusRuntimeException e) {
-            logger.info("RPC failed: " + e.getMessage());
+            timeoutCounter++;
+            logger.info("RPC failed, timeout counter: " + timeoutCounter + "/" + MAX_TIMEOUTS + ".");
+
+            if (timeoutCounter == MAX_TIMEOUTS) {
+                channel.shutdown();
+                logger.info("Timeout reached, channel shut down.");
+            }
         }
 
         return this.latestReading;
