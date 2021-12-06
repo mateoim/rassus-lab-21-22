@@ -20,5 +20,5 @@ class SimpleSimulatedDatagramSocket(socket.socket):
             threading.Thread(target=self._send_packet, args=(packet, sleep_time)).start()
 
     def _send_packet(self, packet, sleep_time):
-        time.sleep(sleep_time)
+        time.sleep(sleep_time / 1000)
         super().sendto(packet, self.address)
