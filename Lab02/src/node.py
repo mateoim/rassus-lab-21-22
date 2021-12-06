@@ -1,10 +1,19 @@
+import socket
 import kafka
 import json
 import pickle
 import threading
+import time
 
 from emulated_system_clock import EmulatedSystemClock
 from simple_simulated_datagram_socket import SimpleSimulatedDatagramSocket
+from reading import Reading
+
+
+readings = '../readings[2].csv'
+loss_rate = 0.3
+average_delay = 1000
+buffer_size = 1024
 
 
 class Node:
@@ -20,21 +29,22 @@ class Node:
         self.running = True
         self.waiting_for_ack = dict()
         self.connections = dict()
+        self.vector_time = []
 
     def run(self):
         self.start()
         self.register()
 
-        threading.Thread(target=self.run_server()).start()
+        threading.Thread(target=self._run_listener).start()
+        threading.Thread(target=self.run_server).start()
 
-        while self.running:
-            pass
+        self.generate_readings()
 
-        print(self.registrations)
+        print(self.all_readings)
 
     def start(self):
         self.id = input('Please enter node id: ')
-        self.port = input('Please enter node port: ')
+        self.port = int(input('Please enter node port: '))
 
         self.consumer = kafka.KafkaConsumer('Command', 'Register', bootstrap_servers='localhost:9092')
 
@@ -72,7 +82,23 @@ class Node:
                         print(f'Sending node {node_id} reading {reading}.')
                         connection.send_packet(pickle.dumps(reading))
 
-            # TODO receive readings and retransmission
+            current_index = final_index
+            # TODO retransmission and ACK
+
+    def generate_readings(self):
+        with open(readings) as f:
+            lines = f.readlines()
+
+        while self.running:
+            current_time = self.clock.current_time_millis() // 1000
+            line = lines[((self.clock.start_time - current_time) % 100) + 1]
+            parts = line.strip().split(',')
+            reading = Reading(parts[0], parts[1], parts[2], parts[3], parts[4], parts[5])
+            reading_tuple = (self.id, current_time, tuple(self.vector_time), reading)
+            self.local_readings.append(reading_tuple)
+            self.all_readings.append(reading_tuple)
+            print(f'Generated reading {reading}')
+            time.sleep(1)
 
     def _poll_consumer(self):
         message = None
@@ -90,12 +116,28 @@ class Node:
                         for element in value:
                             self._register(element)
 
+    def _run_listener(self):
+        print('listener started')
+        server_socket = SimpleSimulatedDatagramSocket(self.port, loss_rate, average_delay)
+        server_socket.bind(('localhost', self.port))
+        server_socket.settimeout(1)
+
+        while self.running:
+            try:
+                data = server_socket.recvfrom(buffer_size)
+                decoded_message = pickle.loads(data[0])
+                self.all_readings.append(decoded_message)
+                print(f'Received reading {decoded_message}')
+            except socket.timeout:
+                continue
+
     def _register(self, element):
         registration = json.loads(element.value.decode('utf-8'))
         if self.id != registration['id']:
             self.registrations.append(registration)
             self.waiting_for_ack[registration['id']] = set(self.local_readings)
-            self.connections[registration['id']] = SimpleSimulatedDatagramSocket(registration['port'], 0.3, 1000)
+            self.connections[registration['id']] =\
+                SimpleSimulatedDatagramSocket(registration['port'], loss_rate, average_delay)
 
 
 if __name__ == '__main__':
