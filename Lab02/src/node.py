@@ -1,14 +1,14 @@
-import socket
-import kafka
 import json
 import pickle
+import socket
 import threading
 import time
 
-from emulated_system_clock import EmulatedSystemClock
-from simple_simulated_datagram_socket import SimpleSimulatedDatagramSocket
-from reading import Reading
+import kafka
 
+from emulated_system_clock import EmulatedSystemClock
+from reading import Reading
+from simple_simulated_datagram_socket import SimpleSimulatedDatagramSocket
 
 readings = '../readings[2].csv'
 loss_rate = 0.3
@@ -28,6 +28,7 @@ class Node:
         self.all_readings = []
         self.running = True
         self.waiting_for_ack = dict()
+        self.send_ack = set()
         self.connections = dict()
         self.vector_time = []
 
@@ -43,8 +44,9 @@ class Node:
         print(self.all_readings)
 
     def start(self):
-        self.id = input('Please enter node id: ')
+        self.id = int(input('Please enter node id: '))
         self.port = int(input('Please enter node port: '))
+        self.vector_time = [0 for _ in range(self.id)]
 
         self.consumer = kafka.KafkaConsumer('Command', 'Register', bootstrap_servers='localhost:9092')
 
@@ -81,9 +83,25 @@ class Node:
                     for node_id, connection in self.connections.items():
                         print(f'Sending node {node_id} reading {reading}.')
                         connection.send_packet(pickle.dumps(reading))
+                        self.waiting_for_ack[node_id].add(reading)
 
             current_index = final_index
-            # TODO retransmission and ACK
+
+            while self.send_ack:
+                message = self.send_ack.pop()
+                ack = (self.id, message[1], message[2])
+                for i in range(min(len(self.vector_time), len(message[2]))):
+                    if i == self.id:
+                        continue
+                    self.vector_time[i] = max(self.vector_time[i], message[2][i])
+                print(f'Sending ack {ack} to node {message[0]}.')
+                self.connections[message[0]].send_packet(pickle.dumps(ack))
+
+            for node_id, connection in self.connections.items():
+                for reading in self.waiting_for_ack[node_id]:
+                    print(f'Sending node {node_id} reading {reading}.')
+                    connection.send_packet(pickle.dumps(reading))
+                    break
 
     def generate_readings(self):
         with open(readings) as f:
@@ -94,6 +112,7 @@ class Node:
             line = lines[((self.clock.start_time - current_time) % 100) + 1]
             parts = line.strip().split(',')
             reading = Reading(parts[0], parts[1], parts[2], parts[3], parts[4], parts[5])
+            self.vector_time[self.id - 1] += 1
             reading_tuple = (self.id, current_time, tuple(self.vector_time), reading)
             self.local_readings.append(reading_tuple)
             self.all_readings.append(reading_tuple)
@@ -126,18 +145,24 @@ class Node:
             try:
                 data = server_socket.recvfrom(buffer_size)
                 decoded_message = pickle.loads(data[0])
-                self.all_readings.append(decoded_message)
-                print(f'Received reading {decoded_message}')
+                print(f'Received message {decoded_message}')
+                if len(decoded_message) == 4:
+                    self.all_readings.append(decoded_message)
+                    self.send_ack.add(decoded_message[:-1])
+                elif len(decoded_message) == 3:
+                    self.waiting_for_ack[decoded_message[0]].remove(decoded_message[1:])
             except socket.timeout:
                 continue
 
     def _register(self, element):
         registration = json.loads(element.value.decode('utf-8'))
-        if self.id != registration['id']:
+        node_id = registration['id']
+        if self.id != node_id:
+            while len(self.vector_time) < node_id:
+                self.vector_time.append(0)
             self.registrations.append(registration)
-            self.waiting_for_ack[registration['id']] = set(self.local_readings)
-            self.connections[registration['id']] =\
-                SimpleSimulatedDatagramSocket(registration['port'], loss_rate, average_delay)
+            self.waiting_for_ack[node_id] = set(self.local_readings)
+            self.connections[node_id] = SimpleSimulatedDatagramSocket(registration['port'], loss_rate, average_delay)
 
 
 if __name__ == '__main__':
