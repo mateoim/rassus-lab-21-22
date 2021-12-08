@@ -2,6 +2,7 @@ import json
 import pickle
 import socket
 import threading
+import time
 
 import kafka
 
@@ -13,8 +14,6 @@ readings = '../readings[2].csv'
 loss_rate = 0.3
 average_delay = 1000
 buffer_size = 1024
-generate_timer = 1000
-retransmission_timer = 1500
 max_retransmissions = 10
 
 
@@ -30,7 +29,7 @@ class Node:
         self.all_readings = []
         self.running = True
         self.waiting_for_ack = dict()
-        self.send_ack = set()
+        self.sent_ack = set()
         self.got_ack = set()
         self.connections = dict()
         self.vector_time = []
@@ -75,23 +74,18 @@ class Node:
         self.producer.send('Register', json.dumps(registration_dict).encode('utf-8'))
 
     def main_loop(self):
-        current_time = self.clock.current_time_millis()
-        last_generate, last_retransmission = current_time, current_time
+        iteration_counter = 0
         with open(readings) as f:
             self.lines = f.readlines()
 
         while self.running:
             self._poll_consumer()
-            current_time = self.clock.current_time_millis()
 
-            # send ack for all received readings
-            while self.send_ack:
-                message = self.send_ack.pop()
-                ack = (self.id, message[1], message[2])
+            # update vector_time
+            while self.sent_ack:
+                message = self.sent_ack.pop()
                 for i in range(min(len(self.vector_time), len(message[2]))):
                     self.vector_time[i] = max(self.vector_time[i], message[2][i])
-                print(f'Sending ack {ack} to node {message[0]}.')
-                self.connections[message[0]].send_packet(pickle.dumps(ack))
 
             # check received acks
             while self.got_ack:
@@ -106,20 +100,19 @@ class Node:
                 if to_remove is not None:
                     self.waiting_for_ack[node_id].remove(to_remove)
 
-            # generate new reading and send it if enough time has passed
-            if current_time - last_generate > generate_timer:
-                last_generate = current_time
-                self.generate_readings(current_time)
-                reading = self.local_readings[-1]
+            # generate new reading and send it
+            self.generate_readings()
+            reading = self.local_readings[-1]
 
-                for node_id, connection in self.connections.items():
-                    print(f'Sending node {node_id} reading {reading}.')
-                    connection.send_packet(pickle.dumps(reading))
-                    self.waiting_for_ack[node_id].add(reading)
+            for node_id, connection in self.connections.items():
+                print(f'Sending node {node_id} reading {reading}.')
+                connection.send_packet(pickle.dumps(reading))
+                self.waiting_for_ack[node_id].add(reading)
+
+            iteration_counter += 1
 
             # send retransmissions if enough time has passed
-            if current_time - last_retransmission > retransmission_timer:
-                last_retransmission = current_time
+            if iteration_counter % 2 == 0:
                 for node_id, connection in self.connections.items():
                     counter = 0
                     for reading in self.waiting_for_ack[node_id]:
@@ -130,8 +123,13 @@ class Node:
                         connection.send_packet(pickle.dumps(reading))
                         counter += 1
 
-    def generate_readings(self, current_time):
-        line = self.lines[((self.clock.start_time - current_time // 1000) % 100) + 1]
+            if iteration_counter % 5 == 0:
+                # TODO print average
+                pass
+
+    def generate_readings(self):
+        current_time = self.clock.current_time_millis() // 1000
+        line = self.lines[((self.clock.start_time - current_time) % 100) + 1]
         parts = line.strip().split(',')
         reading = Reading(parts[0], parts[1], parts[2], parts[3], parts[4], parts[5])
         self.vector_time[self.id - 1] += 1
@@ -139,6 +137,7 @@ class Node:
         self.local_readings.append(reading_tuple)
         self.all_readings.append(reading_tuple)
         print(f'Generated reading {reading}')
+        time.sleep(1)
 
     def _poll_consumer(self):
         message = None
@@ -168,7 +167,10 @@ class Node:
                 print(f'Received message {decoded_message}')
                 if len(decoded_message) == 4:
                     self.all_readings.append(decoded_message)
-                    self.send_ack.add(decoded_message[:-1])
+                    self.sent_ack.add(decoded_message[:-1])
+                    ack = (self.id, decoded_message[1], decoded_message[2])
+                    print(f'Sending ack {ack} to node {decoded_message[0]}.')
+                    self.connections[decoded_message[0]].send_packet(pickle.dumps(ack))
                 elif len(decoded_message) == 3:
                     self.got_ack.add(decoded_message)
             except socket.timeout:
