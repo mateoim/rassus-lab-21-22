@@ -13,8 +13,8 @@ readings = '../readings[2].csv'
 loss_rate = 0.3
 average_delay = 1000
 buffer_size = 1024
-generate_timer = 1500
-retransmission_timer = 2000
+generate_timer = 1000
+retransmission_timer = 1500
 max_retransmissions = 10
 
 
@@ -119,13 +119,14 @@ class Node:
 
             # send retransmissions if enough time has passed
             if current_time - last_retransmission > retransmission_timer:
+                last_retransmission = current_time
                 for node_id, connection in self.connections.items():
                     counter = 0
                     for reading in self.waiting_for_ack[node_id]:
                         if counter > max_retransmissions:
                             break
 
-                        print(f'Sending node {node_id} reading {reading}.')
+                        print(f'Retransmission to node {node_id} reading {reading}.')
                         connection.send_packet(pickle.dumps(reading))
                         counter += 1
 
