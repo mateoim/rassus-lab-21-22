@@ -9,6 +9,7 @@ import kafka
 from emulated_system_clock import EmulatedSystemClock
 from reading import Reading
 from simple_simulated_datagram_socket import SimpleSimulatedDatagramSocket
+from time_vector import TimeVector
 
 readings = '../readings[2].csv'
 loss_rate = 0.3
@@ -26,13 +27,13 @@ class Node:
         self.consumer = None
         self.producer = None
         self.local_readings = []
-        self.all_readings = []
+        self.all_readings = set()
         self.running = True
         self.waiting_for_ack = dict()
         self.sent_ack = set()
         self.got_ack = set()
         self.connections = dict()
-        self.vector_time = []
+        self.vector_time = TimeVector()
         self.scalar_time = 0
         self.lines = None
 
@@ -44,12 +45,15 @@ class Node:
 
         self.main_loop()
 
-        print(self.all_readings)
+        print(f'SORTED BY SCALAR TIME: {sorted(self.all_readings, key=lambda x: x[1])}')
+        print(f'SORTED BY VECTOR TIME: {sorted(self.all_readings, key=lambda x: x[2])}')
 
     def start(self):
         self.id = int(input('Please enter node id: '))
         self.port = int(input('Please enter node port: '))
-        self.vector_time = [0 for _ in range(self.id)]
+
+        while len(self.vector_time) < self.id:
+            self.vector_time.append(0)
 
         self.consumer = kafka.KafkaConsumer('Command', 'Register', bootstrap_servers='localhost:9092')
 
@@ -81,14 +85,19 @@ class Node:
             self.lines = f.readlines()
 
         while self.running:
+            time.sleep(1)
+
             # update time
             while self.sent_ack:
                 message = self.sent_ack.pop()
+                if message not in self.all_readings:
+                    recent.append(message)
+
+                self.all_readings.add(message)
                 for i in range(min(len(self.vector_time), len(message[2]))):
                     self.vector_time[i] = max(self.vector_time[i], message[2][i])
                 self.vector_time[self.id - 1] += 1
                 self.scalar_time = self.clock.update_time_millis(message[1])
-                recent.append(message)
 
             # check received acks
             while self.got_ack:
@@ -131,8 +140,7 @@ class Node:
 
             if iteration_counter % 5 == 0:
                 print(f'SORTED BY SCALAR TIME: {sorted(recent, key=lambda x: x[1])}')
-                # print(f'SORTED BY VECTOR TIME: {sorted(recent, key=lambda x: x)}')
-                # TODO sort by vector_time
+                print(f'SORTED BY VECTOR TIME: {sorted(recent, key=lambda x: x[2])}')
 
                 total, size = 0, 0
 
@@ -150,11 +158,10 @@ class Node:
         reading = Reading(parts[0], parts[1], parts[2], parts[3], parts[4], parts[5])
         self.vector_time[self.id - 1] += 1
         self.scalar_time = self.clock.update_time_millis(self.scalar_time)
-        reading_tuple = (self.id, self.scalar_time, tuple(self.vector_time), reading)
+        reading_tuple = (self.id, self.scalar_time, self.vector_time, reading)
         self.local_readings.append(reading_tuple)
-        self.all_readings.append(reading_tuple)
+        self.all_readings.add(reading_tuple)
         print(f'Generated reading {reading}')
-        time.sleep(1)
 
     def _poll_consumer(self):
         message = None
@@ -185,7 +192,7 @@ class Node:
                 decoded_message = pickle.loads(data[0])
                 print(f'Received message {decoded_message}')
                 if len(decoded_message) == 4:
-                    self.all_readings.append(decoded_message)
+                    # self.all_readings.add(decoded_message)
                     self.sent_ack.add(decoded_message)
                     ack = (self.id, decoded_message[1], decoded_message[2])
                     print(f'Sending ack {ack} to node {decoded_message[0]}.')
@@ -204,9 +211,6 @@ class Node:
             self.registrations.append(registration)
             self.waiting_for_ack[node_id] = set(self.local_readings)
             self.connections[node_id] = SimpleSimulatedDatagramSocket(registration['port'], loss_rate, average_delay)
-
-    def _sort_vector(self, x):
-        pass
 
 
 if __name__ == '__main__':
