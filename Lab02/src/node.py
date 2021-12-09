@@ -33,6 +33,7 @@ class Node:
         self.got_ack = set()
         self.connections = dict()
         self.vector_time = []
+        self.scalar_time = 0
         self.lines = None
 
     def run(self):
@@ -86,6 +87,8 @@ class Node:
                 message = self.sent_ack.pop()
                 for i in range(min(len(self.vector_time), len(message[2]))):
                     self.vector_time[i] = max(self.vector_time[i], message[2][i])
+                self.vector_time[self.id - 1] += 1
+                self.scalar_time = self.clock.update_time_millis(message[1])
 
             # check received acks
             while self.got_ack:
@@ -98,6 +101,8 @@ class Node:
                         break
 
                 if to_remove is not None:
+                    self.vector_time[self.id - 1] += 1
+                    self.scalar_time = self.clock.update_time_millis(self.scalar_time)
                     self.waiting_for_ack[node_id].remove(to_remove)
 
             # generate new reading and send it
@@ -133,7 +138,8 @@ class Node:
         parts = line.strip().split(',')
         reading = Reading(parts[0], parts[1], parts[2], parts[3], parts[4], parts[5])
         self.vector_time[self.id - 1] += 1
-        reading_tuple = (self.id, current_time, tuple(self.vector_time), reading)
+        self.scalar_time = self.clock.update_time_millis(self.scalar_time)
+        reading_tuple = (self.id, self.scalar_time, tuple(self.vector_time), reading)
         self.local_readings.append(reading_tuple)
         self.all_readings.append(reading_tuple)
         print(f'Generated reading {reading}')
