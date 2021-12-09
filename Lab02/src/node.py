@@ -76,19 +76,19 @@ class Node:
 
     def main_loop(self):
         iteration_counter = 0
+        recent = []
         with open(readings) as f:
             self.lines = f.readlines()
 
         while self.running:
-            self._poll_consumer()
-
-            # update vector_time
+            # update time
             while self.sent_ack:
                 message = self.sent_ack.pop()
                 for i in range(min(len(self.vector_time), len(message[2]))):
                     self.vector_time[i] = max(self.vector_time[i], message[2][i])
                 self.vector_time[self.id - 1] += 1
                 self.scalar_time = self.clock.update_time_millis(message[1])
+                recent.append(message)
 
             # check received acks
             while self.got_ack:
@@ -108,6 +108,7 @@ class Node:
             # generate new reading and send it
             self.generate_readings()
             reading = self.local_readings[-1]
+            recent.append(reading)
 
             for node_id, connection in self.connections.items():
                 print(f'Sending node {node_id} reading {reading}.')
@@ -129,8 +130,18 @@ class Node:
                         counter += 1
 
             if iteration_counter % 5 == 0:
-                # TODO print average
-                pass
+                print(f'SORTED BY SCALAR TIME: {sorted(recent, key=lambda x: x[1])}')
+                # print(f'SORTED BY VECTOR TIME: {sorted(recent, key=lambda x: x)}')
+                # TODO sort by vector_time
+
+                total, size = 0, 0
+
+                for value in recent:
+                    size += 1
+                    total += value[3].co
+
+                print(f'AVERAGE IN LAST 5 SECONDS: {total / size}')
+                recent.clear()
 
     def generate_readings(self):
         current_time = self.clock.current_time_millis() // 1000
@@ -167,13 +178,15 @@ class Node:
         server_socket.settimeout(1)
 
         while self.running:
+            self._poll_consumer()
+
             try:
                 data = server_socket.recvfrom(buffer_size)
                 decoded_message = pickle.loads(data[0])
                 print(f'Received message {decoded_message}')
                 if len(decoded_message) == 4:
                     self.all_readings.append(decoded_message)
-                    self.sent_ack.add(decoded_message[:-1])
+                    self.sent_ack.add(decoded_message)
                     ack = (self.id, decoded_message[1], decoded_message[2])
                     print(f'Sending ack {ack} to node {decoded_message[0]}.')
                     self.connections[decoded_message[0]].send_packet(pickle.dumps(ack))
@@ -191,6 +204,9 @@ class Node:
             self.registrations.append(registration)
             self.waiting_for_ack[node_id] = set(self.local_readings)
             self.connections[node_id] = SimpleSimulatedDatagramSocket(registration['port'], loss_rate, average_delay)
+
+    def _sort_vector(self, x):
+        pass
 
 
 if __name__ == '__main__':
