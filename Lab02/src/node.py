@@ -3,13 +3,13 @@ import pickle
 import socket
 import threading
 import time
+from functools import cmp_to_key
 
 import kafka
 
 from emulated_system_clock import EmulatedSystemClock
 from reading import Reading
 from simple_simulated_datagram_socket import SimpleSimulatedDatagramSocket
-from time_vector import TimeVector
 
 readings = '../readings[2].csv'
 loss_rate = 0.3
@@ -47,15 +47,12 @@ class Node:
         self.main_loop()
 
         print(f'SORTED BY SCALAR TIME: {sorted(self.all_readings, key=lambda x: x[1])}')
-        print(f'SORTED BY VECTOR TIME: {sorted(self.all_readings, key=lambda x: x[2])}')
+        print(f'SORTED BY VECTOR TIME: {sorted(self.all_readings, key=cmp_to_key(self._vector_compare))}')
 
     def start(self):
         self.id = int(input('Please enter node id: '))
         self.port = int(input('Please enter node port: '))
-        self.vector_time = TimeVector(self.id)
-
-        while len(self.vector_time) < self.id:
-            self.vector_time.append(0)
+        self.vector_time = [0 for _ in range(self.id)]
 
         self.consumer = kafka.KafkaConsumer('Command', 'Register', bootstrap_servers='localhost:9092')
 
@@ -89,7 +86,7 @@ class Node:
         while self.running:
             time.sleep(1)
 
-            # update time
+            # check received readings
             while self.sent_ack:
                 message = self.sent_ack.pop()
                 if message not in self.all_readings:
@@ -112,8 +109,6 @@ class Node:
                         break
 
                 if to_remove is not None:
-                    self.vector_time[self.id - 1] += 1
-                    self.scalar_time = self.clock.update_time_millis(self.scalar_time)
                     self.waiting_for_ack[node_id].remove(to_remove)
 
             # generate new reading and send it
@@ -145,7 +140,7 @@ class Node:
 
             if self.counter % 5 == 0:
                 print(f'SORTED BY SCALAR TIME: {sorted(recent, key=lambda x: x[1])}')
-                print(f'SORTED BY VECTOR TIME: {sorted(recent, key=lambda x: x[2])}')
+                print(f'SORTED BY VECTOR TIME: {sorted(recent, key=cmp_to_key(self._vector_compare))}')
 
                 total, size = 0, 0
 
@@ -163,7 +158,7 @@ class Node:
         reading = Reading(self.counter, parts[3])
         self.vector_time[self.id - 1] += 1
         self.scalar_time = self.clock.update_time_millis(self.scalar_time)
-        reading_tuple = (self.id, self.scalar_time, self.vector_time.copy(), reading)
+        reading_tuple = (self.id, self.scalar_time, tuple(self.vector_time), reading)
         self.local_readings.append(reading_tuple)
         self.all_readings.add(reading_tuple)
         print(f'Generated reading {reading}')
@@ -220,6 +215,26 @@ class Node:
             self.waiting_for_ack[node_id] =\
                 set((reading[3].id, pickle.dumps(reading)) for reading in self.local_readings)
             self.connections[node_id] = (registration['address'], registration['port'])
+
+    def _vector_compare(self, lhs, rhs):
+        lhs, rhs = lhs[2], rhs[2]
+        if len(lhs) < len(rhs):
+            return -1
+        elif len(lhs) > len(rhs):
+            return 1
+        else:
+            if lhs[self.id - 1] < rhs[self.id - 1]:
+                return -1
+            elif lhs[self.id - 1] > rhs[self.id - 1]:
+                return 1
+            else:
+                for i in range(min(len(lhs), len(rhs))):
+                    if lhs[i] < rhs[i]:
+                        return -1
+                    elif lhs[i] > rhs[i]:
+                        return 1
+
+            return 0
 
 
 if __name__ == '__main__':
