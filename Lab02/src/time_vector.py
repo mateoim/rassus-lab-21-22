@@ -1,5 +1,6 @@
 class TimeVector:
-    def __init__(self):
+    def __init__(self, node_id):
+        self.id = node_id
         self._data = []
 
     def append(self, element):
@@ -7,6 +8,14 @@ class TimeVector:
 
     def tuple(self):
         return tuple(self._data)
+
+    def copy(self):
+        vector = TimeVector(self.id)
+
+        for element in self:
+            vector.append(element)
+
+        return vector
 
     def __getitem__(self, item):
         return self._data[item]
