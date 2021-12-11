@@ -23,7 +23,6 @@ class Node:
         self.id = None
         self.port = None
         self.clock = EmulatedSystemClock()
-        self.registrations = []
         self.consumer = None
         self.producer = None
         self.local_readings = []
@@ -33,9 +32,11 @@ class Node:
         self.sent_ack = set()
         self.got_ack = set()
         self.connections = dict()
-        self.vector_time = TimeVector()
+        self.client_socket = SimpleSimulatedDatagramSocket(loss_rate, average_delay)
+        self.vector_time = None
         self.scalar_time = 0
         self.lines = None
+        self.counter = 0
 
     def run(self):
         self.start()
@@ -51,6 +52,7 @@ class Node:
     def start(self):
         self.id = int(input('Please enter node id: '))
         self.port = int(input('Please enter node port: '))
+        self.vector_time = TimeVector(self.id)
 
         while len(self.vector_time) < self.id:
             self.vector_time.append(0)
@@ -79,8 +81,8 @@ class Node:
         self.producer.send('Register', json.dumps(registration_dict).encode('utf-8'))
 
     def main_loop(self):
-        iteration_counter = 0
         recent = []
+        local_keys = set(self.connections.keys())
         with open(readings) as f:
             self.lines = f.readlines()
 
@@ -92,8 +94,8 @@ class Node:
                 message = self.sent_ack.pop()
                 if message not in self.all_readings:
                     recent.append(message)
+                    self.all_readings.add(message)
 
-                self.all_readings.add(message)
                 for i in range(min(len(self.vector_time), len(message[2]))):
                     self.vector_time[i] = max(self.vector_time[i], message[2][i])
                 self.vector_time[self.id - 1] += 1
@@ -101,11 +103,11 @@ class Node:
 
             # check received acks
             while self.got_ack:
-                node_id, time_millis, time_vector = self.got_ack.pop()
+                node_id, reading_id = self.got_ack.pop()
                 to_remove = None
 
                 for element in self.waiting_for_ack[node_id]:
-                    if element[1] == time_millis and element[2] == time_vector:
+                    if element[0] == reading_id:
                         to_remove = element
                         break
 
@@ -119,26 +121,29 @@ class Node:
             reading = self.local_readings[-1]
             recent.append(reading)
 
-            for node_id, connection in self.connections.items():
-                print(f'Sending node {node_id} reading {reading}.')
-                connection.send_packet(pickle.dumps(reading))
-                self.waiting_for_ack[node_id].add(reading)
+            local_keys = set(self.connections.keys()) if len(local_keys) != len(self.connections.keys()) else local_keys
 
-            iteration_counter += 1
+            for node_id in local_keys:
+                print(f'Sending node {node_id} reading {reading}.')
+                binary_message = pickle.dumps(reading)
+                self.client_socket.send_packet(binary_message, self.connections[node_id])
+                self.waiting_for_ack[node_id].add((reading[3].id, binary_message))
+
+            self.counter += 1
 
             # send retransmissions if enough time has passed
-            if iteration_counter % 2 == 0:
-                for node_id, connection in self.connections.items():
+            if self.counter % 2 == 0:
+                for node_id in local_keys:
                     counter = 0
-                    for reading in self.waiting_for_ack[node_id]:
+                    for message in self.waiting_for_ack[node_id]:
                         if counter > max_retransmissions:
                             break
 
-                        print(f'Retransmission to node {node_id} reading {reading}.')
-                        connection.send_packet(pickle.dumps(reading))
+                        print(f'Retransmission to node {node_id} reading {message[0]}.')
+                        self.client_socket.send_packet(message[1], self.connections[node_id])
                         counter += 1
 
-            if iteration_counter % 5 == 0:
+            if self.counter % 5 == 0:
                 print(f'SORTED BY SCALAR TIME: {sorted(recent, key=lambda x: x[1])}')
                 print(f'SORTED BY VECTOR TIME: {sorted(recent, key=lambda x: x[2])}')
 
@@ -155,10 +160,10 @@ class Node:
         current_time = self.clock.current_time_millis() // 1000
         line = self.lines[((self.clock.start_time - current_time) % 100) + 1]
         parts = line.strip().split(',')
-        reading = Reading(parts[0], parts[1], parts[2], parts[3], parts[4], parts[5])
+        reading = Reading(self.counter, parts[3])
         self.vector_time[self.id - 1] += 1
         self.scalar_time = self.clock.update_time_millis(self.scalar_time)
-        reading_tuple = (self.id, self.scalar_time, self.vector_time, reading)
+        reading_tuple = (self.id, self.scalar_time, self.vector_time.copy(), reading)
         self.local_readings.append(reading_tuple)
         self.all_readings.add(reading_tuple)
         print(f'Generated reading {reading}')
@@ -180,24 +185,28 @@ class Node:
                             self._register(element)
 
     def _run_listener(self):
-        server_socket = SimpleSimulatedDatagramSocket(self.port, loss_rate, average_delay)
+        server_socket = SimpleSimulatedDatagramSocket(loss_rate, average_delay)
         server_socket.bind(('localhost', self.port))
         server_socket.settimeout(1)
 
         while self.running:
             self._poll_consumer()
 
+            if not self.running:
+                break
+
             try:
                 data = server_socket.recvfrom(buffer_size)
                 decoded_message = pickle.loads(data[0])
                 print(f'Received message {decoded_message}')
                 if len(decoded_message) == 4:
-                    # self.all_readings.add(decoded_message)
                     self.sent_ack.add(decoded_message)
-                    ack = (self.id, decoded_message[1], decoded_message[2])
+                    ack = (self.id, decoded_message[3].id)
                     print(f'Sending ack {ack} to node {decoded_message[0]}.')
-                    self.connections[decoded_message[0]].send_packet(pickle.dumps(ack))
-                elif len(decoded_message) == 3:
+                    address = self.connections.get(decoded_message[0])
+                    if address is not None:
+                        self.client_socket.send_packet(pickle.dumps(ack), address)
+                elif len(decoded_message) == 2:
                     self.got_ack.add(decoded_message)
             except socket.timeout:
                 continue
@@ -208,9 +217,9 @@ class Node:
         if self.id != node_id:
             while len(self.vector_time) < node_id:
                 self.vector_time.append(0)
-            self.registrations.append(registration)
-            self.waiting_for_ack[node_id] = set(self.local_readings)
-            self.connections[node_id] = SimpleSimulatedDatagramSocket(registration['port'], loss_rate, average_delay)
+            self.waiting_for_ack[node_id] =\
+                set((reading[3].id, pickle.dumps(reading)) for reading in self.local_readings)
+            self.connections[node_id] = (registration['address'], registration['port'])
 
 
 if __name__ == '__main__':
