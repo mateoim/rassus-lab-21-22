@@ -14,4 +14,5 @@ if __name__ == '__main__':
         line = input('Type "stop" to send Stop message:\n')
 
     coordinator.send('Command', b'Stop')
+    coordinator.flush()
     coordinator.close()
