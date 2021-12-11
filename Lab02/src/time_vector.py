@@ -52,5 +52,18 @@ class TimeVector:
 
         return has_greater
 
+    def __eq__(self, other):
+        if len(self) != len(other):
+            return False
+
+        for e1, e2 in zip(self, other):
+            if e1 != e2:
+                return False
+
+        return True
+
     def __repr__(self):
         return tuple(self._data).__repr__()
+
+    def __hash__(self) -> int:
+        return hash(tuple(self._data))
