@@ -223,16 +223,17 @@ class Node:
         elif len(lhs) > len(rhs):
             return 1
         else:
-            if lhs[self.id - 1] < rhs[self.id - 1]:
-                return -1
-            elif lhs[self.id - 1] > rhs[self.id - 1]:
-                return 1
-            else:
-                for i in range(min(len(lhs), len(rhs))):
-                    if lhs[i] < rhs[i]:
-                        return -1
-                    elif lhs[i] > rhs[i]:
-                        return 1
+            if len(lhs) >= self.id and len(lhs) >= self.id:
+                if lhs[self.id - 1] < rhs[self.id - 1]:
+                    return -1
+                elif lhs[self.id - 1] > rhs[self.id - 1]:
+                    return 1
+
+            for i in range(min(len(lhs), len(rhs))):
+                if lhs[i] < rhs[i]:
+                    return -1
+                elif lhs[i] > rhs[i]:
+                    return 1
 
             return 0
 
