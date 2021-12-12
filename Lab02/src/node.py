@@ -115,14 +115,13 @@ class Node:
             self.generate_readings()
             reading = self.local_readings[-1]
             recent.append(reading)
+            binary_message = pickle.dumps(reading)
 
             local_keys = set(self.connections.keys()) if len(local_keys) != len(self.connections.keys()) else local_keys
 
             for node_id in local_keys:
                 print(f'Sending node {node_id} reading {reading}.')
-                binary_message = pickle.dumps(reading)
                 self.client_socket.send_packet(binary_message, self.connections[node_id])
-                self.waiting_for_ack[node_id].add((reading[3].id, binary_message))
 
             self.counter += 1
 
@@ -137,6 +136,9 @@ class Node:
                         print(f'Retransmission to node {node_id} reading {message[0]}.')
                         self.client_socket.send_packet(message[1], self.connections[node_id])
                         counter += 1
+
+            for node_id in local_keys:
+                self.waiting_for_ack[node_id].add((reading[3].id, binary_message))
 
             if self.counter % 5 == 0:
                 print(f'SORTED BY SCALAR TIME: {sorted(recent, key=lambda x: x[1])}')
