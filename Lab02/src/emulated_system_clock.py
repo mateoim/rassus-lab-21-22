@@ -12,3 +12,6 @@ class EmulatedSystemClock:
         diff = current - self.start_time
         coef = diff / 1000
         return self.start_time + round(diff * ((1 + self.jitter) ** coef))
+
+    def update_time_millis(self, seed):
+        return max(self.current_time_millis(), seed) + 1

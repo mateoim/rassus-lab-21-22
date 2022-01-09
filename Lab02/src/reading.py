@@ -1,11 +1,13 @@
 class Reading:
-    def __init__(self, temperature, pressure, humidity, co=None, no2=None, so2=None):
-        self.temperature = temperature
-        self.pressure = pressure
-        self.humidity = humidity
-        self.co = co
-        self.no2 = no2
-        self.so2 = so2
+    def __init__(self, reading_id, co):
+        self.id = reading_id
+        self.co = float(co) if co != '' else 0
 
     def __repr__(self) -> str:
-        return f'{self.temperature},{self.pressure},{self.humidity},{self.co},{self.no2},{self.so2}'
+        return f'(id: {self.id}, CO: {self.co})'
+
+    def __eq__(self, other):
+        return self.id == other.id and self.co == other.co
+
+    def __hash__(self) -> int:
+        return hash((self.id, self.co))
