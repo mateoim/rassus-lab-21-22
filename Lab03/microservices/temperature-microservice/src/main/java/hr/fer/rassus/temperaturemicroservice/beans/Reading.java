@@ -1,5 +1,6 @@
 package hr.fer.rassus.temperaturemicroservice.beans;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import reactor.util.annotation.NonNull;
 
 import javax.persistence.Entity;
@@ -9,13 +10,26 @@ import javax.persistence.Id;
 @Entity
 public class Reading {
 
+    private static final String name = "Temperature";
+
+    private static final String unit = "C";
+
     @Id
     @GeneratedValue
     @NonNull
     private long id;
 
-    private double temperature;
+    private double value;
 
+    public String getName() {
+        return name;
+    }
+
+    public String getUnit() {
+        return unit;
+    }
+
+    @JsonIgnore
     public long getId() {
         return id;
     }
@@ -24,11 +38,11 @@ public class Reading {
         this.id = id;
     }
 
-    public double getTemperature() {
-        return temperature;
+    public double getValue() {
+        return value;
     }
 
-    public void setTemperature(double temperature) {
-        this.temperature = temperature;
+    public void setValue(double value) {
+        this.value = value;
     }
 }
