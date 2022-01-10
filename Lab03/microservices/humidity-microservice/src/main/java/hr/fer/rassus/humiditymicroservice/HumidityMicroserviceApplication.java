@@ -16,32 +16,32 @@ import java.util.Objects;
 @SpringBootApplication
 public class HumidityMicroserviceApplication implements CommandLineRunner {
 
-	private final ReadingRepository readingRepository;
+    private final ReadingRepository readingRepository;
 
-	public HumidityMicroserviceApplication(ReadingRepository readingRepository) {
-		this.readingRepository = readingRepository;
-	}
+    public HumidityMicroserviceApplication(ReadingRepository readingRepository) {
+        this.readingRepository = readingRepository;
+    }
 
-	public static void main(String[] args) {
-		SpringApplication.run(HumidityMicroserviceApplication.class, args);
-	}
+    public static void main(String[] args) {
+        SpringApplication.run(HumidityMicroserviceApplication.class, args);
+    }
 
-	@Override
-	public void run(String[] args) throws Exception {
-		final ClassLoader classloader = Thread.currentThread().getContextClassLoader();
+    @Override
+    public void run(String[] args) throws Exception {
+        final ClassLoader classloader = Thread.currentThread().getContextClassLoader();
 
-		final List<String> lines = Files.readAllLines(Paths.get(Objects.requireNonNull(
-				classloader.getResource("readings[2].csv")).toURI()));
+        final List<String> lines = Files.readAllLines(Paths.get(Objects.requireNonNull(
+                classloader.getResource("readings[2].csv")).toURI()));
 
-		lines.remove(0);
+        lines.remove(0);
 
-		for (String line : lines) {
-			final String[] parts = line.split(",");
+        for (String line : lines) {
+            final String[] parts = line.split(",");
 
-			final Reading reading = new Reading();
-			reading.setHumidity(Double.parseDouble(parts[2]));
+            final Reading reading = new Reading();
+            reading.setValue(Double.parseDouble(parts[2]));
 
-			readingRepository.save(reading);
-		}
-	}
+            readingRepository.save(reading);
+        }
+    }
 }

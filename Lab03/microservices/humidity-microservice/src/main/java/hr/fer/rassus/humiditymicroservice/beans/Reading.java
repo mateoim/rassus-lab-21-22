@@ -9,12 +9,24 @@ import javax.persistence.Id;
 @Entity
 public class Reading {
 
+    private static final String name = "Humidity";
+
+    private static final String unit = "%";
+
     @Id
     @GeneratedValue
     @NonNull
     private long id;
 
-    private double humidity;
+    private double value;
+
+    public String getName() {
+        return name;
+    }
+
+    public String getUnit() {
+        return unit;
+    }
 
     public long getId() {
         return id;
@@ -24,11 +36,11 @@ public class Reading {
         this.id = id;
     }
 
-    public double getHumidity() {
-        return humidity;
+    public double getValue() {
+        return value;
     }
 
-    public void setHumidity(double humidity) {
-        this.humidity = humidity;
+    public void setValue(double value) {
+        this.value = value;
     }
 }
