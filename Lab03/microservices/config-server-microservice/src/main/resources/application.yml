@@ -1,0 +1,12 @@
+spring:
+  cloud:
+    config:
+      server:
+        git:
+          uri: https://github.com/mateoim/config
+          basedir: target/config
+          default-label: main
+  application:
+    name: config-server-microservice
+server:
+  port: 8080
