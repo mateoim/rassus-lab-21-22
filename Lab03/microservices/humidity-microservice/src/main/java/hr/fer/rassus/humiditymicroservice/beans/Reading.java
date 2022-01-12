@@ -1,5 +1,6 @@
 package hr.fer.rassus.humiditymicroservice.beans;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import reactor.util.annotation.NonNull;
 
 import javax.persistence.Entity;
@@ -28,6 +29,7 @@ public class Reading {
         return unit;
     }
 
+    @JsonIgnore
     public long getId() {
         return id;
     }
