@@ -2,10 +2,11 @@ spring:
   application:
     name: humidity-microservice
 server:
-  port: 0
+  port: 8081
 eureka:
   client:
     serviceUrl:
       defaultZone: ${EUREKA_URI:http://eureka-server:8761/eureka}
   instance:
     preferIpAddress: true
+    leaseRenewalIntervalInSeconds: 5
