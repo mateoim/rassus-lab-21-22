@@ -1,0 +1,17 @@
+version: "3"
+
+services:
+  eureka:
+    image: eureka-server-jib:0.0.1-SNAPSHOT
+    build:
+      context: ./microservices/eureka-server
+    ports:
+      - "8761:8761"
+
+  config:
+    image: config-server-microservice-jib:0.0.1-SNAPSHOT
+    restart: on-failure
+    build:
+      context: ./microservices/config-server-microservice
+    ports:
+      - "8080:8080"
