@@ -6,8 +6,6 @@ services:
     restart: on-failure
     build:
       context: ./microservices/humidity-microservice
-    depends_on:
-      - eureka-server
     ports:
       - "8081:8081"
 
@@ -16,8 +14,6 @@ services:
     restart: on-failure
     build:
       context: ./microservices/temperature-microservice
-    depends_on:
-      - eureka-server
     ports:
       - "8082:8082"
 
@@ -26,10 +22,6 @@ services:
     restart: on-failure
     build:
       context: ./microservices/aggregator-microservice
-    depends_on:
-      - eureka-server
-      - humidity
-      - temperature
     ports:
       - "8000:8000"
 
